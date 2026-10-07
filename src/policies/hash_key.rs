@@ -17,6 +17,43 @@ pub(crate) const SESSION_HEADER_NAMES: &[&str] = &[
     "x-trace-id",
 ];
 
+/// Headers that are stable enough to own a persistent session binding.
+/// Per-request and trace IDs intentionally remain available to legacy hashing
+/// but must not create entries in a stateful affinity table.
+pub(crate) const STABLE_SESSION_HEADER_NAMES: &[&str] = &[
+    "x-session-id",
+    "x-user-id",
+    "x-tenant-id",
+    "x-correlation-id",
+];
+
+/// Extract a genuine session identity without falling back to request content.
+///
+/// Typed requests pass their already-extracted affinity value as plain text;
+/// raw requests still arrive as JSON and are parsed for the supported fields.
+pub(crate) fn extract_stable_session_key(
+    request_text: Option<&str>,
+    headers: Option<&RequestHeaders>,
+) -> Option<String> {
+    if let Some(hdrs) = headers {
+        for header_name in STABLE_SESSION_HEADER_NAMES {
+            if let Some(value) = hdrs.get(*header_name).filter(|value| !value.is_empty()) {
+                return Some(format!("header:{}:{}", header_name, value));
+            }
+        }
+    }
+
+    if let Some(key) = extract_hash_key_from_body(request_text) {
+        return Some(key);
+    }
+
+    // RoutingInputKind::Session passes a typed request's affinity value here,
+    // not its prompt. JSON-looking input is a raw request with no known field.
+    request_text
+        .filter(|text| !text.is_empty() && !text.trim_start().starts_with(['{', '[']))
+        .map(|text| format!("affinity:{text}"))
+}
+
 /// Extract hash key with priority: HTTP headers > body fields > request content hash
 ///
 /// Priority order:
@@ -426,6 +463,20 @@ mod tests {
 
         let key = extract_hash_key(Some(body), Some(&headers));
         assert_eq!(key, "header:x-session-id:from-header");
+    }
+
+    #[test]
+    fn stable_session_key_ignores_request_id() {
+        let headers = HashMap::from([("x-request-id".to_string(), "request-123".to_string())]);
+        assert_eq!(extract_stable_session_key(Some(""), Some(&headers)), None);
+    }
+
+    #[test]
+    fn stable_session_key_accepts_typed_affinity_text() {
+        assert_eq!(
+            extract_stable_session_key(Some("conversation-123"), None).as_deref(),
+            Some("affinity:conversation-123")
+        );
     }
 
     #[test]

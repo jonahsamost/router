@@ -172,6 +172,8 @@ impl PolicyRegistry {
             "random" => Arc::new(RandomPolicy::new()),
             "cache_aware" => Arc::new(CacheAwarePolicy::new()),
             "power_of_two" => Arc::new(PowerOfTwoPolicy::new()),
+            "consistent_hash" => Arc::new(ConsistentHashPolicy::new()),
+            "load_aware_session" => Arc::new(crate::policies::LoadAwareSessionPolicy::new()),
             "rendezvous_hash" => Arc::new(RendezvousHashPolicy::new()),
             _ => {
                 warn!("Unknown policy type '{}', using default", policy_type);
@@ -203,6 +205,13 @@ impl PolicyRegistry {
             }
             PolicyConfig::PowerOfTwo { .. } => Arc::new(PowerOfTwoPolicy::new()),
             PolicyConfig::ConsistentHash { .. } => Arc::new(ConsistentHashPolicy::new()),
+            PolicyConfig::LoadAwareSession {
+                binding_ttl_secs,
+                max_bindings,
+            } => Arc::new(crate::policies::LoadAwareSessionPolicy::with_limits(
+                std::time::Duration::from_secs(*binding_ttl_secs),
+                *max_bindings,
+            )),
             PolicyConfig::RendezvousHash => Arc::new(RendezvousHashPolicy::new()),
         }
     }

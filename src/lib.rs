@@ -30,6 +30,7 @@ pub enum PolicyType {
     CacheAware,
     PowerOfTwo,
     ConsistentHash,
+    LoadAwareSession,
 }
 
 #[pyclass]
@@ -133,6 +134,10 @@ impl Router {
                 },
                 PolicyType::ConsistentHash => ConfigPolicyConfig::ConsistentHash {
                     virtual_nodes: 160, // Default value
+                },
+                PolicyType::LoadAwareSession => ConfigPolicyConfig::LoadAwareSession {
+                    binding_ttl_secs: policies::DEFAULT_SESSION_BINDING_TTL_SECS,
+                    max_bindings: policies::DEFAULT_MAX_SESSION_BINDINGS,
                 },
             }
         };

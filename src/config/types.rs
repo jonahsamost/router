@@ -673,6 +673,14 @@ pub enum PolicyConfig {
         virtual_nodes: u32,
     },
 
+    #[serde(rename = "load_aware_session")]
+    LoadAwareSession {
+        /// Idle time after which a session may be placed again.
+        binding_ttl_secs: u64,
+        /// Maximum number of remembered session bindings.
+        max_bindings: usize,
+    },
+
     #[serde(rename = "rendezvous_hash")]
     RendezvousHash,
 }
@@ -685,6 +693,7 @@ impl PolicyConfig {
             PolicyConfig::CacheAware { .. } => "cache_aware",
             PolicyConfig::PowerOfTwo { .. } => "power_of_two",
             PolicyConfig::ConsistentHash { .. } => "consistent_hash",
+            PolicyConfig::LoadAwareSession { .. } => "load_aware_session",
             PolicyConfig::RendezvousHash => "rendezvous_hash",
         }
     }
@@ -1286,6 +1295,12 @@ mod tests {
             load_check_interval_secs: 60,
         };
         assert_eq!(power_of_two.name(), "power_of_two");
+
+        let load_aware_session = PolicyConfig::LoadAwareSession {
+            binding_ttl_secs: 3600,
+            max_bindings: 100_000,
+        };
+        assert_eq!(load_aware_session.name(), "load_aware_session");
     }
 
     #[test]
@@ -1315,6 +1330,15 @@ mod tests {
         let json = serde_json::to_string(&power_of_two).unwrap();
         assert!(json.contains("\"type\":\"power_of_two\""));
         assert!(json.contains("\"load_check_interval_secs\":60"));
+
+        let load_aware_session = PolicyConfig::LoadAwareSession {
+            binding_ttl_secs: 3600,
+            max_bindings: 100_000,
+        };
+        let json = serde_json::to_string(&load_aware_session).unwrap();
+        assert!(json.contains("\"type\":\"load_aware_session\""));
+        assert!(json.contains("\"binding_ttl_secs\":3600"));
+        assert!(json.contains("\"max_bindings\":100000"));
     }
 
     #[test]

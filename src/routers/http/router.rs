@@ -54,6 +54,7 @@ fn typed_routing_text<T: GenerationRequest>(
         RoutingInputKind::Affinity => request
             .extract_affinity_key()
             .unwrap_or_else(|| request.extract_prefix_text()),
+        RoutingInputKind::Session => request.extract_affinity_key().unwrap_or_default(),
         RoutingInputKind::Prefix => request.extract_prefix_text(),
         RoutingInputKind::Default => request.extract_text_for_routing(),
     }
@@ -1141,15 +1142,14 @@ impl Router {
                     }
                 };
 
-                // Optional load tracking for cache-aware policy
-                // Get the policy for this model to check if it's cache-aware
+                // Track active requests for policies whose next decision uses load.
                 let policy = match model_id {
                     Some(model) => self.policy_registry.get_policy_or_default(model),
                     None => self.policy_registry.get_default_policy(),
                 };
 
                 let load_incremented =
-                    if policy.name() == "cache_aware" || program_completion.is_some() {
+                    if policy.needs_load_tracking() || program_completion.is_some() {
                         worker.increment_load();
                         RouterMetrics::set_running_requests(worker.url(), worker.load());
                         true

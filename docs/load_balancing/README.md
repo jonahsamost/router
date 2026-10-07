@@ -12,8 +12,38 @@ the policy is the same for `grpc://host:port`.
 | `round_robin` | General purpose, even distribution | No | No |
 | `random` | Simple deployments | No | No |
 | `consistent_hash` | Multi-turn conversations, KV cache reuse | Yes | No |
+| `load_aware_session` | Multi-turn conversations with balanced initial placement | Yes | Initial placement only |
 | `power_of_two` | Load-sensitive workloads | No | Yes |
 | `cache_aware` | Prefix caching optimization | Yes (cache-based) | Yes |
+
+---
+
+## Load-Aware Session Affinity
+
+The `load_aware_session` policy places the first request for a session on a
+least-loaded healthy worker, then records that assignment and sends subsequent
+turns to the same worker. This preserves the conversation's local KV cache
+without allowing transient load changes to migrate an active session.
+
+When several workers have the same minimum load, a deterministic hash of the
+session and worker URL breaks the tie. If the bound worker becomes unavailable,
+the session is placed again using the current loads. Idle bindings expire and
+the binding table is bounded.
+
+Only stable session, user, tenant, or correlation identities create bindings.
+Per-request/trace IDs and requests without a stable identity are load-balanced
+without being retained in the session table.
+
+```bash
+vllm-router \
+  --policy load_aware_session \
+  --session-binding-ttl-secs 3600 \
+  --session-max-bindings 100000 \
+  --worker-urls http://worker1:8000,http://worker2:8000
+```
+
+This policy is stateful within one router process. Deployments with multiple
+router replicas must provide router-level stickiness or shared binding state.
 
 ---
 

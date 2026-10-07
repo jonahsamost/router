@@ -340,6 +340,25 @@ impl ConfigValidator {
                     });
                 }
             }
+            PolicyConfig::LoadAwareSession {
+                binding_ttl_secs,
+                max_bindings,
+            } => {
+                if *binding_ttl_secs == 0 {
+                    return Err(ConfigError::InvalidValue {
+                        field: "binding_ttl_secs".to_string(),
+                        value: binding_ttl_secs.to_string(),
+                        reason: "Must be > 0".to_string(),
+                    });
+                }
+                if *max_bindings == 0 {
+                    return Err(ConfigError::InvalidValue {
+                        field: "max_bindings".to_string(),
+                        value: max_bindings.to_string(),
+                        reason: "Must be > 0".to_string(),
+                    });
+                }
+            }
             PolicyConfig::RendezvousHash => {
                 // No specific validation needed
             }

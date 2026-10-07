@@ -12,6 +12,7 @@ mod cache_aware;
 mod consistent_hash;
 mod factory;
 pub(crate) mod hash_key;
+mod load_aware_session;
 mod power_of_two;
 mod random;
 mod registry;
@@ -22,6 +23,9 @@ pub use cache_aware::{CacheAwareCandidate, CacheAwarePlacement, CacheAwarePolicy
 pub use consistent_hash::ConsistentHashPolicy;
 pub use consistent_hash::VIRTUAL_NODES_PER_WORKER;
 pub use factory::PolicyFactory;
+pub use load_aware_session::{
+    LoadAwareSessionPolicy, DEFAULT_MAX_SESSION_BINDINGS, DEFAULT_SESSION_BINDING_TTL_SECS,
+};
 pub use power_of_two::PowerOfTwoPolicy;
 pub use random::RandomPolicy;
 pub use registry::PolicyRegistry;
@@ -41,6 +45,8 @@ pub type RequestHeaders = HashMap<String, String>;
 pub enum RoutingInputKind {
     Default,
     Affinity,
+    /// Stable affinity only; do not substitute the prompt when it is absent.
+    Session,
     Prefix,
 }
 
@@ -125,6 +131,12 @@ pub trait LoadBalancingPolicy: Send + Sync + Debug {
     /// Check if this policy needs HTTP headers for routing decisions
     fn needs_headers(&self) -> bool {
         false // Default: most policies don't need headers
+    }
+
+    /// Whether requests selected by this policy must update the worker's
+    /// active-request counter for the lifetime of the response.
+    fn needs_load_tracking(&self) -> bool {
+        false
     }
 
     /// Update worker load information

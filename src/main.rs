@@ -117,7 +117,7 @@ struct CliArgs {
     worker_urls: Vec<String>,
 
     /// Load balancing policy to use
-    #[arg(long, default_value = "cache_aware", value_parser = ["random", "round_robin", "cache_aware", "power_of_two", "consistent_hash", "rendezvous_hash"])]
+    #[arg(long, default_value = "cache_aware", value_parser = ["random", "round_robin", "cache_aware", "power_of_two", "consistent_hash", "load_aware_session", "rendezvous_hash"])]
     policy: String,
 
     /// Enable Program-level scheduling independently of the request-level
@@ -144,11 +144,11 @@ struct CliArgs {
     decode: Vec<String>,
 
     /// Specific policy for prefill nodes in PD mode
-    #[arg(long, value_parser = ["random", "round_robin", "cache_aware", "power_of_two", "consistent_hash", "rendezvous_hash"])]
+    #[arg(long, value_parser = ["random", "round_robin", "cache_aware", "power_of_two", "consistent_hash", "load_aware_session", "rendezvous_hash"])]
     prefill_policy: Option<String>,
 
     /// Specific policy for decode nodes in PD mode
-    #[arg(long, value_parser = ["random", "round_robin", "cache_aware", "power_of_two", "consistent_hash", "rendezvous_hash"])]
+    #[arg(long, value_parser = ["random", "round_robin", "cache_aware", "power_of_two", "consistent_hash", "load_aware_session", "rendezvous_hash"])]
     decode_policy: Option<String>,
 
     /// Timeout in seconds for worker startup
@@ -178,6 +178,14 @@ struct CliArgs {
     /// Maximum size of the approximation tree for cache-aware routing
     #[arg(long, default_value_t = 67108864)] // 2^26
     max_tree_size: usize,
+
+    /// Idle TTL for load-aware session bindings, in seconds
+    #[arg(long, default_value_t = 3600)]
+    session_binding_ttl_secs: u64,
+
+    /// Maximum number of load-aware session bindings retained in memory
+    #[arg(long, default_value_t = 100000)]
+    session_max_bindings: usize,
 
     /// Maximum payload size in bytes
     #[arg(long, default_value_t = 536870912)] // 512MB
@@ -404,6 +412,10 @@ impl CliArgs {
             },
             "consistent_hash" => PolicyConfig::ConsistentHash {
                 virtual_nodes: 160, // Default value
+            },
+            "load_aware_session" => PolicyConfig::LoadAwareSession {
+                binding_ttl_secs: self.session_binding_ttl_secs,
+                max_bindings: self.session_max_bindings,
             },
             "rendezvous_hash" => PolicyConfig::RendezvousHash,
             _ => PolicyConfig::RoundRobin, // Fallback

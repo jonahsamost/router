@@ -440,6 +440,10 @@ impl LoadBalancingPolicy for CacheAwarePolicy {
         RoutingInputKind::Prefix
     }
 
+    fn needs_load_tracking(&self) -> bool {
+        true
+    }
+
     fn on_request_complete(&self, worker_url: &str, success: bool) {
         // Could track success rates per worker for more intelligent routing
         if !success {
