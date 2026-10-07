@@ -117,7 +117,7 @@ struct CliArgs {
     worker_urls: Vec<String>,
 
     /// Load balancing policy to use
-    #[arg(long, default_value = "cache_aware", value_parser = ["random", "round_robin", "cache_aware", "power_of_two", "consistent_hash", "load_aware_session", "rendezvous_hash"])]
+    #[arg(long, default_value = "cache_aware", value_parser = ["random", "round_robin", "cache_aware", "power_of_two", "consistent_hash", "load_aware_session", "prefix_aware_session", "rendezvous_hash"])]
     policy: String,
 
     /// Enable Program-level scheduling independently of the request-level
@@ -144,11 +144,11 @@ struct CliArgs {
     decode: Vec<String>,
 
     /// Specific policy for prefill nodes in PD mode
-    #[arg(long, value_parser = ["random", "round_robin", "cache_aware", "power_of_two", "consistent_hash", "load_aware_session", "rendezvous_hash"])]
+    #[arg(long, value_parser = ["random", "round_robin", "cache_aware", "power_of_two", "consistent_hash", "load_aware_session", "prefix_aware_session", "rendezvous_hash"])]
     prefill_policy: Option<String>,
 
     /// Specific policy for decode nodes in PD mode
-    #[arg(long, value_parser = ["random", "round_robin", "cache_aware", "power_of_two", "consistent_hash", "load_aware_session", "rendezvous_hash"])]
+    #[arg(long, value_parser = ["random", "round_robin", "cache_aware", "power_of_two", "consistent_hash", "load_aware_session", "prefix_aware_session", "rendezvous_hash"])]
     decode_policy: Option<String>,
 
     /// Timeout in seconds for worker startup
@@ -416,6 +416,12 @@ impl CliArgs {
             "load_aware_session" => PolicyConfig::LoadAwareSession {
                 binding_ttl_secs: self.session_binding_ttl_secs,
                 max_bindings: self.session_max_bindings,
+            },
+            "prefix_aware_session" => PolicyConfig::PrefixAwareSession {
+                binding_ttl_secs: self.session_binding_ttl_secs,
+                max_bindings: self.session_max_bindings,
+                eviction_interval_secs: self.eviction_interval,
+                max_tree_size: self.max_tree_size,
             },
             "rendezvous_hash" => PolicyConfig::RendezvousHash,
             _ => PolicyConfig::RoundRobin, // Fallback

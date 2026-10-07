@@ -6,7 +6,8 @@
 /// When the last worker of a model is removed, the policy mapping is cleaned up.
 use super::{
     CacheAwareConfig, CacheAwarePolicy, ConsistentHashPolicy, LoadBalancingPolicy,
-    PowerOfTwoPolicy, RandomPolicy, RendezvousHashPolicy, RoundRobinPolicy,
+    PowerOfTwoPolicy, PrefixAwareSessionPolicy, RandomPolicy, RendezvousHashPolicy,
+    RoundRobinPolicy,
 };
 use crate::config::types::PolicyConfig;
 use std::collections::HashMap;
@@ -174,6 +175,7 @@ impl PolicyRegistry {
             "power_of_two" => Arc::new(PowerOfTwoPolicy::new()),
             "consistent_hash" => Arc::new(ConsistentHashPolicy::new()),
             "load_aware_session" => Arc::new(crate::policies::LoadAwareSessionPolicy::new()),
+            "prefix_aware_session" => Arc::new(PrefixAwareSessionPolicy::new()),
             "rendezvous_hash" => Arc::new(RendezvousHashPolicy::new()),
             _ => {
                 warn!("Unknown policy type '{}', using default", policy_type);
@@ -211,6 +213,20 @@ impl PolicyRegistry {
             } => Arc::new(crate::policies::LoadAwareSessionPolicy::with_limits(
                 std::time::Duration::from_secs(*binding_ttl_secs),
                 *max_bindings,
+            )),
+            PolicyConfig::PrefixAwareSession {
+                binding_ttl_secs,
+                max_bindings,
+                eviction_interval_secs,
+                max_tree_size,
+            } => Arc::new(PrefixAwareSessionPolicy::with_config(
+                std::time::Duration::from_secs(*binding_ttl_secs),
+                *max_bindings,
+                CacheAwareConfig {
+                    eviction_interval_secs: *eviction_interval_secs,
+                    max_tree_size: *max_tree_size,
+                    ..CacheAwareConfig::default()
+                },
             )),
             PolicyConfig::RendezvousHash => Arc::new(RendezvousHashPolicy::new()),
         }

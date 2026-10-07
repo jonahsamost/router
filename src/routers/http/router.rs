@@ -56,6 +56,13 @@ fn typed_routing_text<T: GenerationRequest>(
             .unwrap_or_else(|| request.extract_prefix_text()),
         RoutingInputKind::Session => request.extract_affinity_key().unwrap_or_default(),
         RoutingInputKind::Prefix => request.extract_prefix_text(),
+        RoutingInputKind::PrefixAndSession => {
+            let prefix = request.extract_prefix_text();
+            match request.extract_affinity_key() {
+                Some(session) => format!("{prefix}\0vllm-router-session:{session}"),
+                None => prefix,
+            }
+        }
         RoutingInputKind::Default => request.extract_text_for_routing(),
     }
 }
@@ -2683,12 +2690,17 @@ mod tests {
         .unwrap();
         let cache = crate::policies::CacheAwarePolicy::new();
         let hash = crate::policies::ConsistentHashPolicy::new();
+        let hybrid = crate::policies::PrefixAwareSessionPolicy::new();
 
         assert_eq!(
             typed_routing_text(&request, &cache),
             "system:shared prefix\nuser:question"
         );
         assert_eq!(typed_routing_text(&request, &hash), "session-a");
+        assert_eq!(
+            typed_routing_text(&request, &hybrid),
+            "system:shared prefix\nuser:question\0vllm-router-session:session-a"
+        );
     }
 
     fn create_test_regular_router() -> Router {

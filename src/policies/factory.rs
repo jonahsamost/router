@@ -2,7 +2,8 @@
 
 use super::{
     CacheAwareConfig, CacheAwarePolicy, ConsistentHashPolicy, LoadAwareSessionPolicy,
-    LoadBalancingPolicy, PowerOfTwoPolicy, RandomPolicy, RendezvousHashPolicy, RoundRobinPolicy,
+    LoadBalancingPolicy, PowerOfTwoPolicy, PrefixAwareSessionPolicy, RandomPolicy,
+    RendezvousHashPolicy, RoundRobinPolicy,
 };
 use crate::config::PolicyConfig;
 use std::sync::Arc;
@@ -45,6 +46,20 @@ impl PolicyFactory {
                 std::time::Duration::from_secs(*binding_ttl_secs),
                 *max_bindings,
             )),
+            PolicyConfig::PrefixAwareSession {
+                binding_ttl_secs,
+                max_bindings,
+                eviction_interval_secs,
+                max_tree_size,
+            } => Arc::new(PrefixAwareSessionPolicy::with_config(
+                std::time::Duration::from_secs(*binding_ttl_secs),
+                *max_bindings,
+                CacheAwareConfig {
+                    eviction_interval_secs: *eviction_interval_secs,
+                    max_tree_size: *max_tree_size,
+                    ..CacheAwareConfig::default()
+                },
+            )),
             PolicyConfig::RendezvousHash => Arc::new(RendezvousHashPolicy::new()),
         }
     }
@@ -59,6 +74,9 @@ impl PolicyFactory {
             "consistent_hash" | "consistenthash" => Some(Arc::new(ConsistentHashPolicy::new())),
             "load_aware_session" | "loadawaresession" => {
                 Some(Arc::new(LoadAwareSessionPolicy::new()))
+            }
+            "prefix_aware_session" | "prefixawaresession" => {
+                Some(Arc::new(PrefixAwareSessionPolicy::new()))
             }
             "rendezvous_hash" | "rendezvoushash" => Some(Arc::new(RendezvousHashPolicy::new())),
             _ => None,
@@ -107,6 +125,14 @@ mod tests {
         });
         assert_eq!(policy.name(), "load_aware_session");
 
+        let policy = PolicyFactory::create_from_config(&PolicyConfig::PrefixAwareSession {
+            binding_ttl_secs: 60,
+            max_bindings: 100,
+            eviction_interval_secs: 30,
+            max_tree_size: 1000,
+        });
+        assert_eq!(policy.name(), "prefix_aware_session");
+
         // Test RendezvousHash
         let policy = PolicyFactory::create_from_config(&PolicyConfig::RendezvousHash);
         assert_eq!(policy.name(), "rendezvous_hash");
@@ -126,6 +152,8 @@ mod tests {
         assert!(PolicyFactory::create_by_name("ConsistentHash").is_some());
         assert!(PolicyFactory::create_by_name("load_aware_session").is_some());
         assert!(PolicyFactory::create_by_name("LoadAwareSession").is_some());
+        assert!(PolicyFactory::create_by_name("prefix_aware_session").is_some());
+        assert!(PolicyFactory::create_by_name("PrefixAwareSession").is_some());
         assert!(PolicyFactory::create_by_name("rendezvous_hash").is_some());
         assert!(PolicyFactory::create_by_name("RendezvousHash").is_some());
         assert!(PolicyFactory::create_by_name("unknown").is_none());

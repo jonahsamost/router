@@ -194,6 +194,11 @@ impl CacheAwarePolicy {
         }
     }
 
+    /// Clear all inferred cache-affinity state.
+    pub fn clear_placements(&self) {
+        self.trees.clear();
+    }
+
     /// Add a single worker to the tree (incremental update)
     pub fn add_worker(&self, worker: &dyn Worker) {
         let tree_key = normalize_model_key(worker.model_id());

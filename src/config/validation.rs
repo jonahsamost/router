@@ -359,6 +359,41 @@ impl ConfigValidator {
                     });
                 }
             }
+            PolicyConfig::PrefixAwareSession {
+                binding_ttl_secs,
+                max_bindings,
+                eviction_interval_secs,
+                max_tree_size,
+            } => {
+                if *binding_ttl_secs == 0 {
+                    return Err(ConfigError::InvalidValue {
+                        field: "binding_ttl_secs".to_string(),
+                        value: binding_ttl_secs.to_string(),
+                        reason: "Must be > 0".to_string(),
+                    });
+                }
+                if *max_bindings == 0 {
+                    return Err(ConfigError::InvalidValue {
+                        field: "max_bindings".to_string(),
+                        value: max_bindings.to_string(),
+                        reason: "Must be > 0".to_string(),
+                    });
+                }
+                if *eviction_interval_secs == 0 {
+                    return Err(ConfigError::InvalidValue {
+                        field: "eviction_interval_secs".to_string(),
+                        value: eviction_interval_secs.to_string(),
+                        reason: "Must be > 0".to_string(),
+                    });
+                }
+                if *max_tree_size == 0 {
+                    return Err(ConfigError::InvalidValue {
+                        field: "max_tree_size".to_string(),
+                        value: max_tree_size.to_string(),
+                        reason: "Must be > 0".to_string(),
+                    });
+                }
+            }
             PolicyConfig::RendezvousHash => {
                 // No specific validation needed
             }

@@ -681,6 +681,18 @@ pub enum PolicyConfig {
         max_bindings: usize,
     },
 
+    #[serde(rename = "prefix_aware_session")]
+    PrefixAwareSession {
+        /// Idle time after which a session may be placed again.
+        binding_ttl_secs: u64,
+        /// Maximum number of remembered session bindings.
+        max_bindings: usize,
+        /// Interval between inferred-prefix eviction cycles (seconds).
+        eviction_interval_secs: u64,
+        /// Maximum inferred prefix-tree size per model.
+        max_tree_size: usize,
+    },
+
     #[serde(rename = "rendezvous_hash")]
     RendezvousHash,
 }
@@ -694,6 +706,7 @@ impl PolicyConfig {
             PolicyConfig::PowerOfTwo { .. } => "power_of_two",
             PolicyConfig::ConsistentHash { .. } => "consistent_hash",
             PolicyConfig::LoadAwareSession { .. } => "load_aware_session",
+            PolicyConfig::PrefixAwareSession { .. } => "prefix_aware_session",
             PolicyConfig::RendezvousHash => "rendezvous_hash",
         }
     }
@@ -1301,6 +1314,14 @@ mod tests {
             max_bindings: 100_000,
         };
         assert_eq!(load_aware_session.name(), "load_aware_session");
+
+        let prefix_aware_session = PolicyConfig::PrefixAwareSession {
+            binding_ttl_secs: 3600,
+            max_bindings: 100_000,
+            eviction_interval_secs: 120,
+            max_tree_size: 1_000_000,
+        };
+        assert_eq!(prefix_aware_session.name(), "prefix_aware_session");
     }
 
     #[test]
@@ -1339,6 +1360,17 @@ mod tests {
         assert!(json.contains("\"type\":\"load_aware_session\""));
         assert!(json.contains("\"binding_ttl_secs\":3600"));
         assert!(json.contains("\"max_bindings\":100000"));
+
+        let prefix_aware_session = PolicyConfig::PrefixAwareSession {
+            binding_ttl_secs: 3600,
+            max_bindings: 100_000,
+            eviction_interval_secs: 120,
+            max_tree_size: 1_000_000,
+        };
+        let json = serde_json::to_string(&prefix_aware_session).unwrap();
+        assert!(json.contains("\"type\":\"prefix_aware_session\""));
+        assert!(json.contains("\"binding_ttl_secs\":3600"));
+        assert!(json.contains("\"eviction_interval_secs\":120"));
     }
 
     #[test]

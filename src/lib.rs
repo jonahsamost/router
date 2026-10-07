@@ -31,6 +31,7 @@ pub enum PolicyType {
     PowerOfTwo,
     ConsistentHash,
     LoadAwareSession,
+    PrefixAwareSession,
 }
 
 #[pyclass]
@@ -138,6 +139,12 @@ impl Router {
                 PolicyType::LoadAwareSession => ConfigPolicyConfig::LoadAwareSession {
                     binding_ttl_secs: policies::DEFAULT_SESSION_BINDING_TTL_SECS,
                     max_bindings: policies::DEFAULT_MAX_SESSION_BINDINGS,
+                },
+                PolicyType::PrefixAwareSession => ConfigPolicyConfig::PrefixAwareSession {
+                    binding_ttl_secs: policies::DEFAULT_SESSION_BINDING_TTL_SECS,
+                    max_bindings: policies::DEFAULT_MAX_SESSION_BINDINGS,
+                    eviction_interval_secs: self.eviction_interval_secs,
+                    max_tree_size: self.max_tree_size,
                 },
             }
         };

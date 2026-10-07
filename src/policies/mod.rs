@@ -14,6 +14,7 @@ mod factory;
 pub(crate) mod hash_key;
 mod load_aware_session;
 mod power_of_two;
+mod prefix_aware_session;
 mod random;
 mod registry;
 mod rendezvous_hash;
@@ -27,6 +28,7 @@ pub use load_aware_session::{
     LoadAwareSessionPolicy, DEFAULT_MAX_SESSION_BINDINGS, DEFAULT_SESSION_BINDING_TTL_SECS,
 };
 pub use power_of_two::PowerOfTwoPolicy;
+pub use prefix_aware_session::PrefixAwareSessionPolicy;
 pub use random::RandomPolicy;
 pub use registry::PolicyRegistry;
 pub use rendezvous_hash::RendezvousHashPolicy;
@@ -48,6 +50,8 @@ pub enum RoutingInputKind {
     /// Stable affinity only; do not substitute the prompt when it is absent.
     Session,
     Prefix,
+    /// Prompt prefix plus an encoded typed-request session identity.
+    PrefixAndSession,
 }
 
 /// Core trait for load balancing policies
