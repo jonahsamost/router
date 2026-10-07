@@ -32,6 +32,18 @@ pub use round_robin::RoundRobinPolicy;
 /// Key is lowercase header name, value is header value
 pub type RequestHeaders = HashMap<String, String>;
 
+/// The request-derived input a policy expects from typed API requests.
+///
+/// Session affinity and prompt-prefix affinity are intentionally separate:
+/// hashing policies need a stable identity, while cache-aware routing needs
+/// the ordered prompt content that may correspond to reusable KV blocks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoutingInputKind {
+    Default,
+    Affinity,
+    Prefix,
+}
+
 /// Core trait for load balancing policies
 ///
 /// This trait provides a unified interface for implementing routing algorithms
@@ -103,6 +115,11 @@ pub trait LoadBalancingPolicy: Send + Sync + Debug {
     /// Check if this policy needs request text for routing decisions
     fn needs_request_text(&self) -> bool {
         false // Default: most policies don't need request text
+    }
+
+    /// Select which typed-request representation is passed as `request_text`.
+    fn routing_input_kind(&self) -> RoutingInputKind {
+        RoutingInputKind::Default
     }
 
     /// Check if this policy needs HTTP headers for routing decisions

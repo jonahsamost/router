@@ -557,114 +557,40 @@ impl GenerationRequest for ChatCompletionRequest {
     }
 
     fn extract_text_for_routing(&self) -> String {
+        self.extract_affinity_key().unwrap_or_default()
+    }
+
+    fn extract_affinity_key(&self) -> Option<String> {
         self.session_params
             .as_ref()
             .and_then(|params| params.get("session_id"))
             .and_then(Value::as_str)
             .filter(|session_id| !session_id.trim().is_empty())
-            .unwrap_or_default()
-            .to_string()
+            .map(str::to_string)
+            .or_else(|| {
+                self.user
+                    .as_deref()
+                    .filter(|user| !user.trim().is_empty())
+                    .map(str::to_string)
+            })
+            .or_else(|| affinity_value(&self.other, "session_id"))
+            .or_else(|| affinity_value(&self.other, "user_id"))
+    }
+
+    fn extract_prefix_text(&self) -> String {
+        let mut parts = Vec::new();
+        // Tool schemas are stable request context. Put them before the growing
+        // message history so adding a new turn preserves the old string as a
+        // literal prefix of the new one.
+        append_chat_tool_schema_parts(self, &mut parts);
+        append_chat_message_parts(&self.messages, &mut parts);
+        parts.join("\n")
     }
 
     fn extract_text_for_program_scheduling(&self) -> String {
         let mut parts = Vec::new();
-        for message in &self.messages {
-            match message {
-                ChatMessage::System { content, .. } => {
-                    for text in content.routing_texts() {
-                        parts.push(format!("system:{}", text.trim()));
-                    }
-                }
-                ChatMessage::User { content, .. } => {
-                    for text in content.routing_texts() {
-                        parts.push(format!("user:{}", text.trim()));
-                    }
-                }
-                ChatMessage::Assistant {
-                    content,
-                    tool_calls,
-                    function_call,
-                    ..
-                } => {
-                    if let Some(content) = content {
-                        for text in content.routing_texts() {
-                            parts.push(format!("assistant:{}", text.trim()));
-                        }
-                    }
-                    if let Some(calls) = tool_calls {
-                        for call in calls {
-                            if let Some(arguments) = &call.function.arguments {
-                                if !arguments.trim().is_empty() {
-                                    parts.push(format!(
-                                        "assistant_tool_call:{}:{}",
-                                        call.function.name.trim(),
-                                        arguments.trim()
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                    if let Some(call) = function_call {
-                        if let Some(arguments) = &call.arguments {
-                            if !arguments.trim().is_empty() {
-                                parts.push(format!(
-                                    "assistant_function_call:{}:{}",
-                                    call.name.trim(),
-                                    arguments.trim()
-                                ));
-                            }
-                        }
-                    }
-                }
-                ChatMessage::Tool { content, .. } => {
-                    if let Some(text) = content.as_str() {
-                        if !text.trim().is_empty() {
-                            parts.push(format!("tool:{}", text.trim()));
-                        }
-                    } else if let Some(items) = content.as_array() {
-                        for item in items {
-                            if let Some(text) = item.get("text").and_then(Value::as_str) {
-                                if !text.trim().is_empty() {
-                                    parts.push(format!("tool:{}", text.trim()));
-                                }
-                            }
-                        }
-                    }
-                }
-                ChatMessage::Function { content, name, .. } if !content.trim().is_empty() => {
-                    parts.push(format!("function:{}:{}", name.trim(), content.trim()));
-                }
-                _ => {}
-            }
-        }
-        if let Some(tools) = &self.tools {
-            let mut tools = tools.iter().collect::<Vec<_>>();
-            tools.sort_by(|left, right| left.function.name.cmp(&right.function.name));
-            for tool in tools {
-                let parameters = serde_json::to_string(&tool.function.parameters)
-                    .unwrap_or_else(|_| "{}".to_string());
-                parts.push(format!(
-                    "tool_schema:{}:{}:{}",
-                    tool.function.name.trim(),
-                    tool.function.description.as_deref().unwrap_or("").trim(),
-                    parameters
-                ));
-            }
-        }
-        if let Some(functions) = &self.functions {
-            let mut functions = functions.iter().collect::<Vec<_>>();
-            functions.sort_by(|left, right| left.name.cmp(&right.name));
-            for function in functions {
-                let parameters = serde_json::to_string(&function.parameters)
-                    .unwrap_or_else(|_| "{}".to_string());
-                parts.push(format!(
-                    "function_schema:{}:{}:{}",
-                    function.name.trim(),
-                    function.description.as_deref().unwrap_or("").trim(),
-                    parameters
-                ));
-            }
-        }
+        append_chat_message_parts(&self.messages, &mut parts);
+        append_chat_tool_schema_parts(self, &mut parts);
         if !parts.is_empty() {
             return parts.join("\n");
         }
@@ -673,6 +599,120 @@ impl GenerationRequest for ChatCompletionRequest {
 
     fn extract_program_identity_payload(&self) -> Option<serde_json::Value> {
         program_identity_payload(&self.other, self.user.as_deref())
+    }
+}
+
+fn affinity_value(
+    values: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Option<String> {
+    values
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+}
+
+fn append_chat_message_parts(messages: &[ChatMessage], parts: &mut Vec<String>) {
+    for message in messages {
+        match message {
+            ChatMessage::System { content, .. } => {
+                for text in content.routing_texts() {
+                    parts.push(format!("system:{}", text.trim()));
+                }
+            }
+            ChatMessage::User { content, .. } => {
+                for text in content.routing_texts() {
+                    parts.push(format!("user:{}", text.trim()));
+                }
+            }
+            ChatMessage::Assistant {
+                content,
+                tool_calls,
+                function_call,
+                ..
+            } => {
+                if let Some(content) = content {
+                    for text in content.routing_texts() {
+                        parts.push(format!("assistant:{}", text.trim()));
+                    }
+                }
+                if let Some(calls) = tool_calls {
+                    for call in calls {
+                        if let Some(arguments) = &call.function.arguments {
+                            if !arguments.trim().is_empty() {
+                                parts.push(format!(
+                                    "assistant_tool_call:{}:{}",
+                                    call.function.name.trim(),
+                                    arguments.trim()
+                                ));
+                            }
+                        }
+                    }
+                }
+                if let Some(call) = function_call {
+                    if let Some(arguments) = &call.arguments {
+                        if !arguments.trim().is_empty() {
+                            parts.push(format!(
+                                "assistant_function_call:{}:{}",
+                                call.name.trim(),
+                                arguments.trim()
+                            ));
+                        }
+                    }
+                }
+            }
+            ChatMessage::Tool { content, .. } => {
+                if let Some(text) = content.as_str() {
+                    if !text.trim().is_empty() {
+                        parts.push(format!("tool:{}", text.trim()));
+                    }
+                } else if let Some(items) = content.as_array() {
+                    for item in items {
+                        if let Some(text) = item.get("text").and_then(Value::as_str) {
+                            if !text.trim().is_empty() {
+                                parts.push(format!("tool:{}", text.trim()));
+                            }
+                        }
+                    }
+                }
+            }
+            ChatMessage::Function { content, name, .. } if !content.trim().is_empty() => {
+                parts.push(format!("function:{}:{}", name.trim(), content.trim()));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn append_chat_tool_schema_parts(request: &ChatCompletionRequest, parts: &mut Vec<String>) {
+    if let Some(tools) = &request.tools {
+        let mut tools = tools.iter().collect::<Vec<_>>();
+        tools.sort_by(|left, right| left.function.name.cmp(&right.function.name));
+        for tool in tools {
+            let parameters = serde_json::to_string(&tool.function.parameters)
+                .unwrap_or_else(|_| "{}".to_string());
+            parts.push(format!(
+                "tool_schema:{}:{}:{}",
+                tool.function.name.trim(),
+                tool.function.description.as_deref().unwrap_or("").trim(),
+                parameters
+            ));
+        }
+    }
+    if let Some(functions) = &request.functions {
+        let mut functions = functions.iter().collect::<Vec<_>>();
+        functions.sort_by(|left, right| left.name.cmp(&right.name));
+        for function in functions {
+            let parameters =
+                serde_json::to_string(&function.parameters).unwrap_or_else(|_| "{}".to_string());
+            parts.push(format!(
+                "function_schema:{}:{}:{}",
+                function.name.trim(),
+                function.description.as_deref().unwrap_or("").trim(),
+                parameters
+            ));
+        }
     }
 }
 
@@ -2415,6 +2455,16 @@ pub trait GenerationRequest: Send + Sync {
     /// Extract text content for routing decisions
     fn extract_text_for_routing(&self) -> String;
 
+    /// Extract a stable session/user identity for affinity-based policies.
+    fn extract_affinity_key(&self) -> Option<String> {
+        None
+    }
+
+    /// Extract ordered prompt content for prefix-affinity policies.
+    fn extract_prefix_text(&self) -> String {
+        self.extract_text_for_routing()
+    }
+
     /// Extract prompt content used only by opted-in Program scheduling.
     fn extract_text_for_program_scheduling(&self) -> String {
         self.extract_text_for_routing()
@@ -3929,9 +3979,48 @@ mod tests {
 
         assert_eq!(request.extract_text_for_routing(), "stable-session");
         assert_eq!(
+            request.extract_affinity_key().as_deref(),
+            Some("stable-session")
+        );
+        assert_eq!(
+            request.extract_prefix_text(),
+            "user:first turn\nassistant:previous completion\nuser:next turn"
+        );
+        assert_eq!(
             request.extract_text_for_program_scheduling(),
             "user:first turn\nassistant:previous completion\nuser:next turn"
         );
+    }
+
+    #[test]
+    fn test_chat_prefix_text_is_independent_of_session_and_append_stable() {
+        let first: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "test-model",
+            "messages": [
+                {"role": "system", "content": "shared system prompt"},
+                {"role": "user", "content": "first turn"}
+            ],
+            "session_params": {"session_id": "session-a"}
+        }))
+        .unwrap();
+        let second: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "test-model",
+            "messages": [
+                {"role": "system", "content": "shared system prompt"},
+                {"role": "user", "content": "first turn"},
+                {"role": "assistant", "content": "first answer"},
+                {"role": "user", "content": "second turn"}
+            ],
+            "session_params": {"session_id": "session-b"}
+        }))
+        .unwrap();
+
+        let first_prefix = first.extract_prefix_text();
+        let second_prefix = second.extract_prefix_text();
+        assert!(second_prefix.starts_with(&first_prefix));
+        assert!(!first_prefix.contains("session-a"));
+        assert_eq!(first.extract_affinity_key().as_deref(), Some("session-a"));
+        assert_eq!(second.extract_affinity_key().as_deref(), Some("session-b"));
     }
 
     #[test]

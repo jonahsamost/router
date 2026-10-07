@@ -13,7 +13,7 @@ use tracing::info;
 use super::get_healthy_worker_indices;
 use super::hash_key;
 use super::LoadBalancingPolicy;
-use super::RequestHeaders;
+use super::{RequestHeaders, RoutingInputKind};
 use crate::core::Worker;
 use crate::metrics::RouterMetrics;
 
@@ -461,6 +461,10 @@ impl LoadBalancingPolicy for ConsistentHashPolicy {
 
     fn needs_request_text(&self) -> bool {
         true // We need request text to extract session_id/user_id as fallback
+    }
+
+    fn routing_input_kind(&self) -> RoutingInputKind {
+        RoutingInputKind::Affinity
     }
 
     fn needs_headers(&self) -> bool {

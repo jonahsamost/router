@@ -59,7 +59,10 @@
     during the next eviction cycle.
 */
 
-use super::{get_healthy_worker_indices, CacheAwareConfig, LoadBalancingPolicy, RequestHeaders};
+use super::{
+    get_healthy_worker_indices, CacheAwareConfig, LoadBalancingPolicy, RequestHeaders,
+    RoutingInputKind,
+};
 use crate::core::Worker;
 use crate::metrics::RouterMetrics;
 use crate::policies::normalize_model_key;
@@ -431,6 +434,10 @@ impl LoadBalancingPolicy for CacheAwarePolicy {
 
     fn needs_request_text(&self) -> bool {
         true // Cache-aware policy needs request text for cache affinity
+    }
+
+    fn routing_input_kind(&self) -> RoutingInputKind {
+        RoutingInputKind::Prefix
     }
 
     fn on_request_complete(&self, worker_url: &str, success: bool) {

@@ -13,7 +13,7 @@ use tracing::info;
 use super::get_healthy_worker_indices;
 use super::hash_key;
 use super::LoadBalancingPolicy;
-use super::RequestHeaders;
+use super::{RequestHeaders, RoutingInputKind};
 use crate::core::Worker;
 use crate::metrics::RouterMetrics;
 use crate::policies::ConsistentHashPolicy;
@@ -83,6 +83,10 @@ impl LoadBalancingPolicy for RendezvousHashPolicy {
 
     fn needs_request_text(&self) -> bool {
         true
+    }
+
+    fn routing_input_kind(&self) -> RoutingInputKind {
+        RoutingInputKind::Affinity
     }
 
     fn needs_headers(&self) -> bool {

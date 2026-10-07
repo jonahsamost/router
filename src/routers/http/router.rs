@@ -6,7 +6,7 @@ use crate::core::{
 };
 use crate::metrics::RouterMetrics;
 use crate::otel_http::{self, ClientRequestOptions};
-use crate::policies::{LoadBalancingPolicy, PolicyRegistry};
+use crate::policies::{LoadBalancingPolicy, PolicyRegistry, RoutingInputKind};
 use crate::program_scheduling::{
     BackendObservationProvider, ProgramIdentity, ProgramScheduler, ProgramSchedulerConfig,
     ProgramTarget, ScheduleError, VllmMetricsObservationProvider,
@@ -43,6 +43,19 @@ use tracing::{debug, error, info, warn};
 fn insert_router_stages(headers: &mut HeaderMap, stages: &serde_json::Value) {
     if let Ok(value) = HeaderValue::from_str(&stages.to_string()) {
         headers.insert("x-router-stages", value);
+    }
+}
+
+fn typed_routing_text<T: GenerationRequest>(
+    request: &T,
+    policy: &dyn LoadBalancingPolicy,
+) -> String {
+    match policy.routing_input_kind() {
+        RoutingInputKind::Affinity => request
+            .extract_affinity_key()
+            .unwrap_or_else(|| request.extract_prefix_text()),
+        RoutingInputKind::Prefix => request.extract_prefix_text(),
+        RoutingInputKind::Default => request.extract_text_for_routing(),
     }
 }
 
@@ -1048,7 +1061,7 @@ impl Router {
         };
 
         // All-grpc chat: tokenize once, outside policy and retry.
-        // Policy still uses extract_text_for_routing (session / empty).
+        // Cache-aware routing uses append-stable prompt text. The prepared
         // token_ids stay on PreparedChat for a later token-level policy —
         // do not dump 131k ids into the cache_aware tree.
         let prepared = if matches!(pool, Some(crate::backend::WorkerPoolKind::Grpc))
@@ -1081,7 +1094,11 @@ impl Router {
             None
         };
 
-        let text = typed_req.extract_text_for_routing();
+        let policy = match model_id {
+            Some(model) => self.policy_registry.get_policy_or_default(model),
+            None => self.policy_registry.get_default_policy(),
+        };
+        let text = typed_routing_text(typed_req, policy.as_ref());
 
         let response = RetryExecutor::execute_response_with_retry(
             &self.retry_config,
@@ -2652,6 +2669,27 @@ impl RouterTrait for Router {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn typed_routing_uses_prompt_for_cache_and_session_for_hashing() {
+        let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "test-model",
+            "messages": [
+                {"role": "system", "content": "shared prefix"},
+                {"role": "user", "content": "question"}
+            ],
+            "session_params": {"session_id": "session-a"}
+        }))
+        .unwrap();
+        let cache = crate::policies::CacheAwarePolicy::new();
+        let hash = crate::policies::ConsistentHashPolicy::new();
+
+        assert_eq!(
+            typed_routing_text(&request, &cache),
+            "system:shared prefix\nuser:question"
+        );
+        assert_eq!(typed_routing_text(&request, &hash), "session-a");
+    }
 
     fn create_test_regular_router() -> Router {
         // Create registries
